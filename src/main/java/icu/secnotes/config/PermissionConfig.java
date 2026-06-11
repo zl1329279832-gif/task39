@@ -55,7 +55,8 @@ public class PermissionConfig {
         "/xss/**",            // XSS跨站脚本
         "/rce/**",            // 任意命令执行（后端接口路径为 /rce）
         "/massAssignment/**", // Mass Assignment 批量赋值漏洞
-        "/api/graphql"        // GraphQL 漏洞演示（guest 和 admin 均可访问，字段级安全由 @PreAuthorize 控制）
+        "/api/graphql",       // GraphQL 漏洞演示（guest 和 admin 均可访问，字段级安全由 @PreAuthorize 控制）
+        "/drill/student/**"   // 演练任务参与（所有登录用户）
     );
 
     /**
@@ -77,7 +78,8 @@ public class PermissionConfig {
         "/redos/**",          // ReDoS 正则拒绝服务
         "/spel/**",           // SpEL 表达式注入
         "/cors/**",           // CORS 配置漏洞
-        "/zipslip/**"         // ZIP Slip 路径穿越漏洞
+        "/zipslip/**",        // ZIP Slip 路径穿越漏洞
+        "/drill/admin/**"     // 演练任务管理（管理员）
     );
 
     /**
