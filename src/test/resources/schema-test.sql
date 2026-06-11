@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS drill_checkpoint (
     verify_pattern VARCHAR(1000),
     defense_pattern VARCHAR(1000),
     hint_content TEXT,
+    version INT NOT NULL DEFAULT 1,
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -102,18 +103,25 @@ CREATE TABLE IF NOT EXISTS drill_attempt (
     task_id INT NOT NULL,
     checkpoint_id INT NOT NULL,
     user_id INT NOT NULL,
+    attempt_number INT NOT NULL DEFAULT 1,
     attempt_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     payload_summary TEXT,
     evidence TEXT,
     elapsed_seconds INT DEFAULT 0,
+    server_elapsed_seconds INT DEFAULT 0,
     hints_used INT DEFAULT 0,
-    deduction_items VARCHAR(500),
+    deduction_items VARCHAR(1000),
     score INT DEFAULT 0,
     passed TINYINT DEFAULT 0,
+    checkpoint_version INT NOT NULL DEFAULT 1,
+    checkpoint_mode VARCHAR(20) NOT NULL,
+    max_score_snapshot INT NOT NULL DEFAULT 100,
+    max_hints_snapshot INT NOT NULL DEFAULT 3,
+    time_limit_snapshot INT DEFAULT 1800,
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS uk_user_checkpoint ON drill_attempt(user_id, checkpoint_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_user_checkpoint_task ON drill_attempt(user_id, checkpoint_id, task_id);
 
 CREATE TABLE IF NOT EXISTS drill_score_summary (
     id INT AUTO_INCREMENT PRIMARY KEY,

@@ -86,6 +86,9 @@ public class DrillStudentController {
     public Result submitAttempt(@RequestBody DrillSubmitRequest request,
                                 HttpServletRequest httpRequest) {
         Integer userId = getCurrentUserId(httpRequest);
+        if (userId == null) {
+            return Result.error("无效的用户身份");
+        }
         try {
             DrillAttempt attempt = attemptService.submit(userId, request);
             return Result.success(attempt);
@@ -103,6 +106,9 @@ public class DrillStudentController {
     public Result getAttempts(@PathVariable Integer taskId,
                               HttpServletRequest httpRequest) {
         Integer userId = getCurrentUserId(httpRequest);
+        if (userId == null) {
+            return Result.error("无效的用户身份");
+        }
         List<DrillAttempt> attempts = attemptService.getAttempts(taskId, userId);
         return Result.success(attempts);
     }
@@ -114,6 +120,9 @@ public class DrillStudentController {
     public Result getTaskScore(@PathVariable Integer taskId,
                                HttpServletRequest httpRequest) {
         Integer userId = getCurrentUserId(httpRequest);
+        if (userId == null) {
+            return Result.error("无效的用户身份");
+        }
         ScoreSummaryDTO summary = taskService.getUserScoreSummary(taskId, userId);
         return Result.success(summary);
     }
@@ -124,6 +133,9 @@ public class DrillStudentController {
     @GetMapping("/scores")
     public Result getAllScores(HttpServletRequest httpRequest) {
         Integer userId = getCurrentUserId(httpRequest);
+        if (userId == null) {
+            return Result.error("无效的用户身份");
+        }
         List<DrillTask> tasks = taskService.listActiveTasks();
         List<ScoreSummaryDTO> summaries = new ArrayList<>();
         for (DrillTask task : tasks) {
@@ -136,11 +148,23 @@ public class DrillStudentController {
         return Result.success(summaries);
     }
 
+    /**
+     * 从请求中解析当前用户 ID
+     * 正确处理 Bearer 前缀，对解析异常返回 null
+     */
     private Integer getCurrentUserId(HttpServletRequest request) {
-        String token = request.getHeader("Authorization");
-        if (token != null && token.startsWith("Bearer ")) {
-            token = token.substring(7);
+        try {
+            String token = request.getHeader("Authorization");
+            if (token == null || token.trim().isEmpty()) {
+                return null;
+            }
+            if (token.startsWith("Bearer ")) {
+                token = token.substring(7);
+            }
+            return Integer.parseInt(JwtUtils.parseJwt(token).get("id").toString());
+        } catch (Exception e) {
+            log.warn("解析用户身份失败: {}", e.getMessage());
+            return null;
         }
-        return Integer.parseInt(JwtUtils.parseJwt(token).get("id").toString());
     }
 }

@@ -172,6 +172,7 @@ CREATE TABLE IF NOT EXISTS drill_checkpoint (
     verify_pattern   VARCHAR(1000) COMMENT '验证正则(EXPLOIT模式)',
     defense_pattern  VARCHAR(1000) COMMENT '防御验证正则(DEFENSE模式)',
     hint_content     TEXT COMMENT '提示内容(JSON数组)',
+    version          INT NOT NULL DEFAULT 1 COMMENT '检查点版本号，管理员修改时自增',
     create_time      DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_checkpoint_task FOREIGN KEY (task_id) REFERENCES drill_task(id) ON DELETE CASCADE,
     CONSTRAINT fk_checkpoint_prereq FOREIGN KEY (prerequisite_id) REFERENCES drill_checkpoint(id) ON DELETE SET NULL
@@ -179,23 +180,30 @@ CREATE TABLE IF NOT EXISTS drill_checkpoint (
 
 -- 演练尝试记录表
 CREATE TABLE IF NOT EXISTS drill_attempt (
-    id              INT AUTO_INCREMENT PRIMARY KEY,
-    task_id         INT NOT NULL,
-    checkpoint_id   INT NOT NULL,
-    user_id         INT NOT NULL COMMENT '学生ID (Admin.id)',
-    attempt_time    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    payload_summary TEXT COMMENT '攻击载荷摘要',
-    evidence        TEXT COMMENT '成功证据',
-    elapsed_seconds INT DEFAULT 0,
-    hints_used      INT DEFAULT 0,
-    deduction_items VARCHAR(500) COMMENT '扣分项JSON: [{reason, points}]',
-    score           INT DEFAULT 0,
-    passed          TINYINT DEFAULT 0 COMMENT '0=未通过, 1=通过',
-    create_time     DATETIME DEFAULT CURRENT_TIMESTAMP,
+    id                   INT AUTO_INCREMENT PRIMARY KEY,
+    task_id              INT NOT NULL,
+    checkpoint_id        INT NOT NULL,
+    user_id              INT NOT NULL COMMENT '学生ID (Admin.id)',
+    attempt_number       INT NOT NULL DEFAULT 1 COMMENT '尝试序号',
+    attempt_time         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    payload_summary      TEXT COMMENT '攻击载荷摘要',
+    evidence             TEXT COMMENT '成功证据',
+    elapsed_seconds      INT DEFAULT 0 COMMENT '客户端报告的耗时',
+    server_elapsed_seconds INT DEFAULT 0 COMMENT '服务端计算的耗时',
+    hints_used           INT DEFAULT 0,
+    deduction_items      VARCHAR(1000) COMMENT '扣分项JSON: [{reason, points}]',
+    score                INT DEFAULT 0,
+    passed               TINYINT DEFAULT 0 COMMENT '0=未通过, 1=通过',
+    checkpoint_version   INT NOT NULL DEFAULT 1 COMMENT '提交时的检查点版本',
+    checkpoint_mode      VARCHAR(20) NOT NULL COMMENT '提交时的检查点模式',
+    max_score_snapshot   INT NOT NULL DEFAULT 100 COMMENT '提交时的满分快照',
+    max_hints_snapshot   INT NOT NULL DEFAULT 3 COMMENT '提交时的最大提示次数快照',
+    time_limit_snapshot  INT DEFAULT 1800 COMMENT '提交时的时间限制快照',
+    create_time          DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_attempt_task FOREIGN KEY (task_id) REFERENCES drill_task(id),
     CONSTRAINT fk_attempt_checkpoint FOREIGN KEY (checkpoint_id) REFERENCES drill_checkpoint(id),
     CONSTRAINT fk_attempt_user FOREIGN KEY (user_id) REFERENCES Admin(id),
-    CONSTRAINT uk_user_checkpoint UNIQUE (user_id, checkpoint_id)
+    CONSTRAINT uk_user_checkpoint_task UNIQUE (user_id, checkpoint_id, task_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='演练尝试记录表';
 
 -- 演练成绩统计表

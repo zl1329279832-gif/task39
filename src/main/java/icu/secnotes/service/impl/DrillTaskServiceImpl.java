@@ -79,6 +79,7 @@ public class DrillTaskServiceImpl implements DrillTaskService {
                 cp.setDefensePattern(def.getCustomDefensePattern() != null
                         ? def.getCustomDefensePattern() : pair.getDefaultDefensePattern());
                 cp.setHintContent(def.getHintContent());
+                cp.setVersion(1);
 
                 if (def.getPrerequisiteOrder() != null) {
                     cp.setPrerequisiteId(orderToId.get(def.getPrerequisiteOrder()));
@@ -155,6 +156,9 @@ public class DrillTaskServiceImpl implements DrillTaskService {
         }
         if (checkpoint.getTimeLimit() == null) {
             checkpoint.setTimeLimit(1800);
+        }
+        if (checkpoint.getVersion() == null) {
+            checkpoint.setVersion(1);
         }
         checkpointMapper.insert(checkpoint);
         return checkpoint;

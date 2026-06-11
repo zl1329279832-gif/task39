@@ -42,6 +42,9 @@ public class DrillTaskAdminController {
     public Result createTask(@RequestBody DrillTaskCreateRequest request,
                              HttpServletRequest httpRequest) {
         Integer creatorId = getCurrentUserId(httpRequest);
+        if (creatorId == null) {
+            return Result.error("无效的用户身份");
+        }
         try {
             DrillTask task = taskService.createTask(request, creatorId);
             Map<String, Object> data = new HashMap<>();
@@ -157,10 +160,18 @@ public class DrillTaskAdminController {
     }
 
     private Integer getCurrentUserId(HttpServletRequest request) {
-        String token = request.getHeader("Authorization");
-        if (token != null && token.startsWith("Bearer ")) {
-            token = token.substring(7);
+        try {
+            String token = request.getHeader("Authorization");
+            if (token == null || token.trim().isEmpty()) {
+                return null;
+            }
+            if (token.startsWith("Bearer ")) {
+                token = token.substring(7);
+            }
+            return Integer.parseInt(JwtUtils.parseJwt(token).get("id").toString());
+        } catch (Exception e) {
+            log.warn("解析用户身份失败: {}", e.getMessage());
+            return null;
         }
-        return Integer.parseInt(JwtUtils.parseJwt(token).get("id").toString());
     }
 }

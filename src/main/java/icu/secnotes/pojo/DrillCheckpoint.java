@@ -25,5 +25,6 @@ public class DrillCheckpoint {
     private String verifyPattern;
     private String defensePattern;
     private String hintContent;
+    private Integer version;
     private LocalDateTime createTime;
 }

@@ -45,9 +45,13 @@ public class PermissionInterceptor implements HandlerInterceptor {
             return false;
         }
 
-        // 3. 解析 token 获取用户信息
+        // 3. 解析 token 获取用户信息（处理 Bearer 前缀）
         try {
-            String userId = JwtUtils.parseJwt(token).get("id").toString();
+            String jwtToken = token;
+            if (jwtToken.startsWith("Bearer ")) {
+                jwtToken = jwtToken.substring(7);
+            }
+            String userId = JwtUtils.parseJwt(jwtToken).get("id").toString();
             Admin admin = loginService.getAdminById(userId);
             
             if (admin == null) {

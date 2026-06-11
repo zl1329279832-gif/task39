@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -39,28 +40,49 @@ public class DrillAttemptServiceImpl implements DrillAttemptService {
     @Override
     @Transactional
     public DrillAttempt submit(Integer userId, DrillSubmitRequest request) {
-        // 1. 幂等检查：如果已通过，直接返回缓存结果
-        DrillAttempt existing = attemptMapper.findByUserAndCheckpoint(userId, request.getCheckpointId());
-        if (existing != null && existing.getPassed() != null && existing.getPassed() == 1) {
-            log.info("幂等返回: 用户 {} 检查点 {} 已通过", userId, request.getCheckpointId());
-            return existing;
-        }
-
-        // 2. 加载检查点
+        // 1. 加载检查点
         DrillCheckpoint checkpoint = checkpointMapper.findById(request.getCheckpointId());
         if (checkpoint == null) {
             throw new IllegalArgumentException("检查点不存在: " + request.getCheckpointId());
         }
 
-        // 3. 检查前置条件
+        // 验证 taskId 一致性，防止跨任务提交
+        Integer taskId = request.getTaskId() != null ? request.getTaskId() : checkpoint.getTaskId();
+        if (!taskId.equals(checkpoint.getTaskId())) {
+            throw new IllegalArgumentException("任务ID与检查点不匹配");
+        }
+
+        // 2. 查询已有尝试（按 user + checkpoint + task 隔离）
+        DrillAttempt existing = attemptMapper.findByUserAndCheckpointAndTask(
+                userId, request.getCheckpointId(), taskId);
+
+        // 3. 幂等检查：已通过 且 版本/模式未变 → 直接返回缓存
+        if (existing != null && existing.getPassed() != null && existing.getPassed() == 1) {
+            int currentVersion = checkpoint.getVersion() != null ? checkpoint.getVersion() : 1;
+            int existingVersion = existing.getCheckpointVersion() != null ? existing.getCheckpointVersion() : 1;
+            String currentMode = checkpoint.getMode();
+            String existingMode = existing.getCheckpointMode();
+
+            if (currentVersion == existingVersion && Objects.equals(currentMode, existingMode)) {
+                log.info("幂等返回: 用户 {} 检查点 {} 已通过 (版本={}, 模式={})",
+                        userId, request.getCheckpointId(), currentVersion, currentMode);
+                return existing;
+            }
+            // 版本或模式已变更，旧的通过记录不再有效，需要重新验证
+            log.info("检查点配置已变更 (版本: {}→{}, 模式: {}→{}), 需要重新验证",
+                    existingVersion, currentVersion, existingMode, currentMode);
+        }
+
+        // 4. 检查前置条件
         if (checkpoint.getPrerequisiteId() != null) {
-            DrillAttempt prereq = attemptMapper.findByUserAndCheckpoint(userId, checkpoint.getPrerequisiteId());
+            DrillAttempt prereq = attemptMapper.findByUserAndCheckpointAndTask(
+                    userId, checkpoint.getPrerequisiteId(), taskId);
             if (prereq == null || prereq.getPassed() == null || prereq.getPassed() != 1) {
                 throw new IllegalStateException("前置检查点尚未通过");
             }
         }
 
-        // 4. 验证
+        // 5. 验证（EXPLOIT / DEFENSE）
         VerificationResult result;
         if ("EXPLOIT".equalsIgnoreCase(checkpoint.getMode())) {
             result = verifier.verifyExploit(checkpoint, request.getEvidence());
@@ -68,64 +90,92 @@ public class DrillAttemptServiceImpl implements DrillAttemptService {
             result = verifier.verifyDefense(checkpoint, request.getPayloadSummary());
         }
 
-        // 5. 计算分数和扣分
+        // 6. 计算扣分（使用检查点快照值，保证可追溯）
         int baseScore = checkpoint.getMaxScore();
+        int maxHints = checkpoint.getMaxHints();
+        int timeLimit = checkpoint.getTimeLimit() != null ? checkpoint.getTimeLimit() : 1800;
+
         List<Map<String, Object>> deductions = new ArrayList<>();
         int totalDeduction = 0;
 
+        // 6a. 提示次数扣分
         int hintsUsed = request.getHintsUsed() != null ? request.getHintsUsed() : 0;
-        if (hintsUsed > checkpoint.getMaxHints()) {
-            int d = (hintsUsed - checkpoint.getMaxHints()) * 5;
+        if (hintsUsed > maxHints) {
+            int d = (hintsUsed - maxHints) * 5;
             Map<String, Object> item = new HashMap<>();
             item.put("reason", "超出提示次数");
             item.put("points", d);
+            item.put("hintsUsed", hintsUsed);
+            item.put("maxHints", maxHints);
             deductions.add(item);
             totalDeduction += d;
         }
 
-        int elapsed = request.getElapsedSeconds() != null ? request.getElapsedSeconds() : 0;
-        if (checkpoint.getTimeLimit() != null && elapsed > checkpoint.getTimeLimit()) {
-            int d = (int) Math.min(20, (double) (elapsed - checkpoint.getTimeLimit()) / 60 * 5);
+        // 6b. 超时扣分（同时记录客户端和服务端耗时）
+        int clientElapsed = request.getElapsedSeconds() != null ? request.getElapsedSeconds() : 0;
+        // 服务端耗时：如果有已有尝试，从首次尝试时间计算；否则使用客户端值
+        int serverElapsed = clientElapsed;
+        if (existing != null && existing.getAttemptTime() != null) {
+            long secondsSinceFirst = Duration.between(existing.getAttemptTime(), LocalDateTime.now()).getSeconds();
+            serverElapsed = (int) secondsSinceFirst;
+        }
+        if (clientElapsed > timeLimit) {
+            int d = (int) Math.min(20, (double) (clientElapsed - timeLimit) / 60 * 5);
             if (d > 0) {
                 Map<String, Object> item = new HashMap<>();
                 item.put("reason", "超时");
                 item.put("points", d);
+                item.put("elapsedSeconds", clientElapsed);
+                item.put("serverElapsedSeconds", serverElapsed);
+                item.put("timeLimit", timeLimit);
                 deductions.add(item);
                 totalDeduction += d;
             }
         }
 
+        // 6c. 重试扣分（基于尝试序号）
+        int attemptNumber = 1;
         if (existing != null) {
+            attemptNumber = (existing.getAttemptNumber() != null ? existing.getAttemptNumber() : 1) + 1;
             Map<String, Object> item = new HashMap<>();
             item.put("reason", "重试");
             item.put("points", 3);
+            item.put("attemptNumber", attemptNumber);
             deductions.add(item);
             totalDeduction += 3;
         }
 
         int finalScore = result.isPassed() ? Math.max(0, baseScore - totalDeduction) : 0;
 
-        // 6. 构造或更新尝试记录
+        // 7. 构造或更新尝试记录（含完整检查点快照）
         DrillAttempt attempt = existing != null ? existing : new DrillAttempt();
-        attempt.setTaskId(request.getTaskId() != null ? request.getTaskId() : checkpoint.getTaskId());
+        attempt.setTaskId(taskId);
         attempt.setCheckpointId(request.getCheckpointId());
         attempt.setUserId(userId);
+        attempt.setAttemptNumber(attemptNumber);
         attempt.setAttemptTime(LocalDateTime.now());
         attempt.setPayloadSummary(request.getPayloadSummary());
         attempt.setEvidence(request.getEvidence());
-        attempt.setElapsedSeconds(elapsed);
+        attempt.setElapsedSeconds(clientElapsed);
+        attempt.setServerElapsedSeconds(serverElapsed);
         attempt.setHintsUsed(hintsUsed);
         attempt.setDeductionItems(toJson(deductions));
         attempt.setScore(finalScore);
         attempt.setPassed(result.isPassed() ? 1 : 0);
+        // 检查点配置快照
+        attempt.setCheckpointVersion(checkpoint.getVersion() != null ? checkpoint.getVersion() : 1);
+        attempt.setCheckpointMode(checkpoint.getMode());
+        attempt.setMaxScoreSnapshot(baseScore);
+        attempt.setMaxHintsSnapshot(maxHints);
+        attempt.setTimeLimitSnapshot(timeLimit);
         attemptMapper.upsert(attempt);
 
-        // 7. 更新成绩统计
-        updateScoreSummary(attempt.getTaskId(), userId);
+        // 8. 更新成绩统计
+        updateScoreSummary(taskId, userId);
 
-        log.info("提交结果: 用户={} 检查点={} 模式={} 通过={} 分数={}",
+        log.info("提交结果: 用户={} 检查点={} 模式={} 版本={} 通过={} 分数={} 尝试次数={}",
                 userId, request.getCheckpointId(), checkpoint.getMode(),
-                result.isPassed(), finalScore);
+                checkpoint.getVersion(), result.isPassed(), finalScore, attemptNumber);
         return attempt;
     }
 
@@ -177,7 +227,19 @@ public class DrillAttemptServiceImpl implements DrillAttemptService {
         for (int i = 0; i < deductions.size(); i++) {
             if (i > 0) sb.append(",");
             Map<String, Object> item = deductions.get(i);
-            sb.append("{\"reason\":\"").append(item.get("reason")).append("\",\"points\":").append(item.get("points")).append("}");
+            sb.append("{");
+            boolean first = true;
+            for (Map.Entry<String, Object> entry : item.entrySet()) {
+                if (!first) sb.append(",");
+                first = false;
+                sb.append("\"").append(entry.getKey()).append("\":");
+                if (entry.getValue() instanceof String) {
+                    sb.append("\"").append(entry.getValue()).append("\"");
+                } else {
+                    sb.append(entry.getValue());
+                }
+            }
+            sb.append("}");
         }
         sb.append("]");
         return sb.toString();

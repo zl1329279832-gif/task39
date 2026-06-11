@@ -9,16 +9,29 @@ import java.util.Map;
 @Mapper
 public interface DrillAttemptMapper {
 
-    @Insert("INSERT INTO drill_attempt(task_id, checkpoint_id, user_id, attempt_time, " +
-            "payload_summary, evidence, elapsed_seconds, hints_used, deduction_items, score, passed) " +
-            "VALUES(#{taskId}, #{checkpointId}, #{userId}, #{attemptTime}, " +
-            "#{payloadSummary}, #{evidence}, #{elapsedSeconds}, #{hintsUsed}, " +
-            "#{deductionItems}, #{score}, #{passed}) " +
-            "ON DUPLICATE KEY UPDATE attempt_time=#{attemptTime}, payload_summary=#{payloadSummary}, " +
-            "evidence=#{evidence}, elapsed_seconds=#{elapsedSeconds}, hints_used=#{hintsUsed}, " +
-            "deduction_items=#{deductionItems}, score=#{score}, passed=#{passed}")
+    @Insert("INSERT INTO drill_attempt(task_id, checkpoint_id, user_id, attempt_number, attempt_time, " +
+            "payload_summary, evidence, elapsed_seconds, server_elapsed_seconds, hints_used, " +
+            "deduction_items, score, passed, checkpoint_version, checkpoint_mode, " +
+            "max_score_snapshot, max_hints_snapshot, time_limit_snapshot) " +
+            "VALUES(#{taskId}, #{checkpointId}, #{userId}, #{attemptNumber}, #{attemptTime}, " +
+            "#{payloadSummary}, #{evidence}, #{elapsedSeconds}, #{serverElapsedSeconds}, #{hintsUsed}, " +
+            "#{deductionItems}, #{score}, #{passed}, #{checkpointVersion}, #{checkpointMode}, " +
+            "#{maxScoreSnapshot}, #{maxHintsSnapshot}, #{timeLimitSnapshot}) " +
+            "ON DUPLICATE KEY UPDATE attempt_number=#{attemptNumber}, attempt_time=#{attemptTime}, " +
+            "payload_summary=#{payloadSummary}, evidence=#{evidence}, " +
+            "elapsed_seconds=#{elapsedSeconds}, server_elapsed_seconds=#{serverElapsedSeconds}, " +
+            "hints_used=#{hintsUsed}, deduction_items=#{deductionItems}, score=#{score}, passed=#{passed}, " +
+            "checkpoint_version=#{checkpointVersion}, checkpoint_mode=#{checkpointMode}, " +
+            "max_score_snapshot=#{maxScoreSnapshot}, max_hints_snapshot=#{maxHintsSnapshot}, " +
+            "time_limit_snapshot=#{timeLimitSnapshot}")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int upsert(DrillAttempt attempt);
+
+    @Select("SELECT * FROM drill_attempt WHERE user_id = #{userId} AND checkpoint_id = #{checkpointId} " +
+            "AND task_id = #{taskId}")
+    DrillAttempt findByUserAndCheckpointAndTask(@Param("userId") Integer userId,
+                                                 @Param("checkpointId") Integer checkpointId,
+                                                 @Param("taskId") Integer taskId);
 
     @Select("SELECT * FROM drill_attempt WHERE user_id = #{userId} AND checkpoint_id = #{checkpointId}")
     DrillAttempt findByUserAndCheckpoint(@Param("userId") Integer userId,
@@ -26,6 +39,12 @@ public interface DrillAttemptMapper {
 
     @Select("SELECT * FROM drill_attempt WHERE task_id = #{taskId} AND user_id = #{userId} ORDER BY attempt_time")
     List<DrillAttempt> findByTaskAndUser(@Param("taskId") Integer taskId,
+                                          @Param("userId") Integer userId);
+
+    @Select("SELECT COUNT(*) FROM drill_attempt WHERE task_id = #{taskId} AND checkpoint_id = #{checkpointId} " +
+            "AND user_id = #{userId}")
+    int countAttemptsByUserCheckpointTask(@Param("taskId") Integer taskId,
+                                          @Param("checkpointId") Integer checkpointId,
                                           @Param("userId") Integer userId);
 
     @Select("SELECT COALESCE(SUM(score), 0) FROM drill_attempt WHERE task_id=#{taskId} AND user_id=#{userId}")
