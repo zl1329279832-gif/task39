@@ -195,8 +195,12 @@ public class DrillTaskServiceImpl implements DrillTaskService {
 
         List<DrillCheckpoint> checkpoints = checkpointMapper.findByTaskId(taskId);
         List<DrillAttempt> attempts = attemptMapper.findByTaskAndUser(taskId, userId);
-        Map<Integer, DrillAttempt> attemptMap = attempts.stream()
-                .collect(Collectors.toMap(DrillAttempt::getCheckpointId, a -> a));
+        // 按 checkpointId:mode 组合键索引，避免同检查点多模式时 key 冲突
+        Map<String, DrillAttempt> attemptMap = attempts.stream()
+                .collect(Collectors.toMap(
+                        a -> a.getCheckpointId() + ":" + (a.getMode() != null ? a.getMode() : "EXPLOIT"),
+                        a -> a,
+                        (a1, a2) -> a1));
 
         ScoreSummaryDTO dto = new ScoreSummaryDTO();
         dto.setTaskId(taskId);
@@ -210,7 +214,7 @@ public class DrillTaskServiceImpl implements DrillTaskService {
 
         for (DrillCheckpoint cp : checkpoints) {
             maxPossible += cp.getMaxScore();
-            DrillAttempt attempt = attemptMap.get(cp.getId());
+            DrillAttempt attempt = attemptMap.get(cp.getId() + ":" + cp.getMode());
 
             ScoreSummaryDTO.CheckpointScore cs = new ScoreSummaryDTO.CheckpointScore();
             cs.setCheckpointId(cp.getId());

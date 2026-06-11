@@ -108,12 +108,15 @@ CREATE TABLE IF NOT EXISTS drill_attempt (
     elapsed_seconds INT DEFAULT 0,
     hints_used INT DEFAULT 0,
     deduction_items VARCHAR(500),
+    mode VARCHAR(20) NOT NULL DEFAULT 'EXPLOIT',
+    scored_max_score INT,
+    scored_mode VARCHAR(20),
     score INT DEFAULT 0,
     passed TINYINT DEFAULT 0,
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS uk_user_checkpoint ON drill_attempt(user_id, checkpoint_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_user_checkpoint ON drill_attempt(user_id, checkpoint_id, mode);
 
 CREATE TABLE IF NOT EXISTS drill_score_summary (
     id INT AUTO_INCREMENT PRIMARY KEY,

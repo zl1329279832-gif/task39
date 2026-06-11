@@ -19,6 +19,9 @@ public class DrillAttempt {
     private Integer elapsedSeconds;
     private Integer hintsUsed;
     private String deductionItems;
+    private String mode;
+    private Integer scoredMaxScore;
+    private String scoredMode;
     private Integer score;
     private Integer passed;
     private LocalDateTime createTime;

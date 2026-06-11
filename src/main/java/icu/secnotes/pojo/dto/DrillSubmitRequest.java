@@ -10,4 +10,5 @@ public class DrillSubmitRequest {
     private String evidence;
     private Integer elapsedSeconds;
     private Integer hintsUsed;
+    private String mode; // EXPLOIT 或 DEFENSE；缺省时回退到检查点声明的 mode
 }

@@ -189,13 +189,16 @@ CREATE TABLE IF NOT EXISTS drill_attempt (
     elapsed_seconds INT DEFAULT 0,
     hints_used      INT DEFAULT 0,
     deduction_items VARCHAR(500) COMMENT '扣分项JSON: [{reason, points}]',
+    mode            VARCHAR(20) NOT NULL DEFAULT 'EXPLOIT' COMMENT '提交模式: EXPLOIT 或 DEFENSE',
+    scored_max_score INT COMMENT '评分时检查点满分快照(防止管理员调整后旧成绩漂移)',
+    scored_mode     VARCHAR(20) COMMENT '评分时模式快照',
     score           INT DEFAULT 0,
     passed          TINYINT DEFAULT 0 COMMENT '0=未通过, 1=通过',
     create_time     DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_attempt_task FOREIGN KEY (task_id) REFERENCES drill_task(id),
     CONSTRAINT fk_attempt_checkpoint FOREIGN KEY (checkpoint_id) REFERENCES drill_checkpoint(id),
     CONSTRAINT fk_attempt_user FOREIGN KEY (user_id) REFERENCES Admin(id),
-    CONSTRAINT uk_user_checkpoint UNIQUE (user_id, checkpoint_id)
+    CONSTRAINT uk_user_checkpoint UNIQUE (user_id, checkpoint_id, mode)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='演练尝试记录表';
 
 -- 演练成绩统计表

@@ -10,19 +10,21 @@ import java.util.Map;
 public interface DrillAttemptMapper {
 
     @Insert("INSERT INTO drill_attempt(task_id, checkpoint_id, user_id, attempt_time, " +
-            "payload_summary, evidence, elapsed_seconds, hints_used, deduction_items, score, passed) " +
+            "payload_summary, evidence, elapsed_seconds, hints_used, deduction_items, " +
+            "mode, scored_max_score, scored_mode, score, passed) " +
             "VALUES(#{taskId}, #{checkpointId}, #{userId}, #{attemptTime}, " +
             "#{payloadSummary}, #{evidence}, #{elapsedSeconds}, #{hintsUsed}, " +
-            "#{deductionItems}, #{score}, #{passed}) " +
+            "#{deductionItems}, #{mode}, #{scoredMaxScore}, #{scoredMode}, #{score}, #{passed}) " +
             "ON DUPLICATE KEY UPDATE attempt_time=#{attemptTime}, payload_summary=#{payloadSummary}, " +
             "evidence=#{evidence}, elapsed_seconds=#{elapsedSeconds}, hints_used=#{hintsUsed}, " +
             "deduction_items=#{deductionItems}, score=#{score}, passed=#{passed}")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int upsert(DrillAttempt attempt);
 
-    @Select("SELECT * FROM drill_attempt WHERE user_id = #{userId} AND checkpoint_id = #{checkpointId}")
-    DrillAttempt findByUserAndCheckpoint(@Param("userId") Integer userId,
-                                         @Param("checkpointId") Integer checkpointId);
+    @Select("SELECT * FROM drill_attempt WHERE user_id = #{userId} AND checkpoint_id = #{checkpointId} AND mode = #{mode}")
+    DrillAttempt findByUserAndCheckpointAndMode(@Param("userId") Integer userId,
+                                                @Param("checkpointId") Integer checkpointId,
+                                                @Param("mode") String mode);
 
     @Select("SELECT * FROM drill_attempt WHERE task_id = #{taskId} AND user_id = #{userId} ORDER BY attempt_time")
     List<DrillAttempt> findByTaskAndUser(@Param("taskId") Integer taskId,

@@ -39,36 +39,48 @@ public class DrillAttemptServiceImpl implements DrillAttemptService {
     @Override
     @Transactional
     public DrillAttempt submit(Integer userId, DrillSubmitRequest request) {
-        // 1. 幂等检查：如果已通过，直接返回缓存结果
-        DrillAttempt existing = attemptMapper.findByUserAndCheckpoint(userId, request.getCheckpointId());
-        if (existing != null && existing.getPassed() != null && existing.getPassed() == 1) {
-            log.info("幂等返回: 用户 {} 检查点 {} 已通过", userId, request.getCheckpointId());
-            return existing;
-        }
-
         // 2. 加载检查点
         DrillCheckpoint checkpoint = checkpointMapper.findById(request.getCheckpointId());
         if (checkpoint == null) {
             throw new IllegalArgumentException("检查点不存在: " + request.getCheckpointId());
         }
 
-        // 3. 检查前置条件
+        // 确定有效模式：请求指定的模式优先，缺省回退到检查点声明的模式
+        String effectiveMode = request.getMode() != null && !request.getMode().trim().isEmpty()
+                ? request.getMode().trim().toUpperCase()
+                : checkpoint.getMode();
+
+        // 校验模式合法性
+        if (!"EXPLOIT".equals(effectiveMode) && !"DEFENSE".equals(effectiveMode)) {
+            throw new IllegalArgumentException("非法的提交模式: " + effectiveMode);
+        }
+
+        // 1. 幂等检查：按 (userId, checkpointId, mode) 隔离，已通过则直接返回
+        DrillAttempt existing = attemptMapper.findByUserAndCheckpointAndMode(
+                userId, request.getCheckpointId(), effectiveMode);
+        if (existing != null && existing.getPassed() != null && existing.getPassed() == 1) {
+            log.info("幂等返回: 用户 {} 检查点 {} 模式 {} 已通过", userId, request.getCheckpointId(), effectiveMode);
+            return existing;
+        }
+
+        // 3. 检查前置条件（前置检查点必须在同模式下通过）
         if (checkpoint.getPrerequisiteId() != null) {
-            DrillAttempt prereq = attemptMapper.findByUserAndCheckpoint(userId, checkpoint.getPrerequisiteId());
+            DrillAttempt prereq = attemptMapper.findByUserAndCheckpointAndMode(
+                    userId, checkpoint.getPrerequisiteId(), effectiveMode);
             if (prereq == null || prereq.getPassed() == null || prereq.getPassed() != 1) {
                 throw new IllegalStateException("前置检查点尚未通过");
             }
         }
 
-        // 4. 验证
+        // 4. 根据有效模式选择验证策略
         VerificationResult result;
-        if ("EXPLOIT".equalsIgnoreCase(checkpoint.getMode())) {
+        if ("EXPLOIT".equals(effectiveMode)) {
             result = verifier.verifyExploit(checkpoint, request.getEvidence());
         } else {
             result = verifier.verifyDefense(checkpoint, request.getPayloadSummary());
         }
 
-        // 5. 计算分数和扣分
+        // 5. 计算分数和扣分（快照当前满分，防止管理员调整后漂移）
         int baseScore = checkpoint.getMaxScore();
         List<Map<String, Object>> deductions = new ArrayList<>();
         int totalDeduction = 0;
@@ -95,6 +107,7 @@ public class DrillAttemptServiceImpl implements DrillAttemptService {
             }
         }
 
+        // 重试扣分：仅同模式下的重试才扣分
         if (existing != null) {
             Map<String, Object> item = new HashMap<>();
             item.put("reason", "重试");
@@ -105,7 +118,7 @@ public class DrillAttemptServiceImpl implements DrillAttemptService {
 
         int finalScore = result.isPassed() ? Math.max(0, baseScore - totalDeduction) : 0;
 
-        // 6. 构造或更新尝试记录
+        // 6. 构造或更新尝试记录，写入模式和评分快照
         DrillAttempt attempt = existing != null ? existing : new DrillAttempt();
         attempt.setTaskId(request.getTaskId() != null ? request.getTaskId() : checkpoint.getTaskId());
         attempt.setCheckpointId(request.getCheckpointId());
@@ -116,6 +129,9 @@ public class DrillAttemptServiceImpl implements DrillAttemptService {
         attempt.setElapsedSeconds(elapsed);
         attempt.setHintsUsed(hintsUsed);
         attempt.setDeductionItems(toJson(deductions));
+        attempt.setMode(effectiveMode);
+        attempt.setScoredMaxScore(baseScore);
+        attempt.setScoredMode(effectiveMode);
         attempt.setScore(finalScore);
         attempt.setPassed(result.isPassed() ? 1 : 0);
         attemptMapper.upsert(attempt);
@@ -124,7 +140,7 @@ public class DrillAttemptServiceImpl implements DrillAttemptService {
         updateScoreSummary(attempt.getTaskId(), userId);
 
         log.info("提交结果: 用户={} 检查点={} 模式={} 通过={} 分数={}",
-                userId, request.getCheckpointId(), checkpoint.getMode(),
+                userId, request.getCheckpointId(), effectiveMode,
                 result.isPassed(), finalScore);
         return attempt;
     }
