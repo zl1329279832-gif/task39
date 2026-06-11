@@ -108,6 +108,11 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>
@@ -240,6 +245,16 @@
             <artifactId>groovy-all</artifactId>
             <version>3.0.9</version>
             <type>pom</type>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.testng</groupId>
+                    <artifactId>testng</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.codehaus.groovy</groupId>
+                    <artifactId>groovy-testng</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- Spring LDAP（用于LDAP注入漏洞演示） -->
