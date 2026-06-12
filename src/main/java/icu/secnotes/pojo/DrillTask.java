@@ -15,6 +15,11 @@ public class DrillTask {
     private String difficulty;
     private Integer creatorId;
     private String status;
+    private Integer maxHintCount;
+    private Integer timeLimitMinutes;
+    private Integer allowRetry;
+    private Integer evidenceReviewRequired;
+    private String prerequisiteKnowledge;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }

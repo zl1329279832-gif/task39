@@ -222,3 +222,73 @@ CREATE TABLE IF NOT EXISTS drill_score_summary (
     CONSTRAINT fk_score_user FOREIGN KEY (user_id) REFERENCES Admin(id),
     CONSTRAINT uk_task_user UNIQUE (task_id, user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='演练成绩统计表';
+
+-- 任务规则扩展字段
+ALTER TABLE drill_task
+    ADD COLUMN max_hint_count INT DEFAULT NULL COMMENT '全局提示次数上限(NULL=不限制)',
+    ADD COLUMN time_limit_minutes INT DEFAULT NULL COMMENT '全局时间限制(分钟)',
+    ADD COLUMN allow_retry TINYINT DEFAULT 1 COMMENT '0=不允许重试,1=允许',
+    ADD COLUMN evidence_review_required TINYINT DEFAULT 0 COMMENT '0=不需要复核,1=需要',
+    ADD COLUMN prerequisite_knowledge TEXT COMMENT '前置知识点JSON数组';
+
+-- 尝试记录扩展字段
+ALTER TABLE drill_attempt
+    ADD COLUMN screenshot_hash VARCHAR(64) COMMENT '截图SHA-256',
+    ADD COLUMN request_log TEXT COMMENT '结构化请求记录JSON';
+
+-- 复核工单表
+CREATE TABLE IF NOT EXISTS drill_review_ticket (
+    id                INT AUTO_INCREMENT PRIMARY KEY,
+    attempt_id        INT NOT NULL COMMENT '关联的尝试记录ID',
+    task_id           INT NOT NULL COMMENT '关联的任务ID',
+    checkpoint_id     INT NOT NULL COMMENT '关联的检查点ID',
+    user_id           INT NOT NULL COMMENT '提交者ID',
+    reviewer_id       INT COMMENT '复核人ID',
+    original_passed   TINYINT NOT NULL COMMENT '原始判定: 0=未通过, 1=通过',
+    original_score    INT NOT NULL COMMENT '原始分数',
+    review_status     VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT 'pending/approved/rejected/overridden',
+    overridden_passed TINYINT COMMENT '改判结果: 0=未通过, 1=通过',
+    overridden_score  INT COMMENT '改判分数',
+    reason            TEXT COMMENT '创建复核原因',
+    review_comment    TEXT COMMENT '复核意见',
+    create_time       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    review_time       DATETIME COMMENT '复核时间',
+    CONSTRAINT fk_review_attempt FOREIGN KEY (attempt_id) REFERENCES drill_attempt(id),
+    CONSTRAINT fk_review_task FOREIGN KEY (task_id) REFERENCES drill_task(id),
+    CONSTRAINT fk_review_checkpoint FOREIGN KEY (checkpoint_id) REFERENCES drill_checkpoint(id),
+    CONSTRAINT fk_review_user FOREIGN KEY (user_id) REFERENCES Admin(id),
+    CONSTRAINT fk_review_reviewer FOREIGN KEY (reviewer_id) REFERENCES Admin(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='复核工单表';
+
+CREATE INDEX idx_review_ticket_attempt ON drill_review_ticket(attempt_id);
+CREATE INDEX idx_review_ticket_task ON drill_review_ticket(task_id);
+CREATE INDEX idx_review_ticket_status ON drill_review_ticket(review_status);
+
+-- 审计日志表
+CREATE TABLE IF NOT EXISTS drill_audit_log (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    actor_id    INT NOT NULL COMMENT '操作者ID',
+    action      VARCHAR(50) NOT NULL COMMENT '操作类型',
+    target_type VARCHAR(50) NOT NULL COMMENT '目标类型',
+    target_id   INT NOT NULL COMMENT '目标ID',
+    details     TEXT COMMENT '详细信息JSON',
+    ip_address  VARCHAR(50) COMMENT '操作者IP',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_audit_actor FOREIGN KEY (actor_id) REFERENCES Admin(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='审计日志表';
+
+CREATE INDEX idx_audit_target ON drill_audit_log(target_type, target_id);
+CREATE INDEX idx_audit_actor ON drill_audit_log(actor_id);
+
+-- 复核规则表
+CREATE TABLE IF NOT EXISTS drill_review_rule (
+    id                     INT AUTO_INCREMENT PRIMARY KEY,
+    task_id                INT NOT NULL COMMENT '关联任务ID',
+    auto_approve_threshold INT DEFAULT 80 COMMENT '自动通过分数阈值',
+    manual_review_below    INT DEFAULT 50 COMMENT '低于此分数需人工复核',
+    manual_review_triggers VARCHAR(500) COMMENT '人工复核触发条件JSON',
+    create_time            DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time            DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_review_rule_task FOREIGN KEY (task_id) REFERENCES drill_task(id),
+    CONSTRAINT uk_review_rule_task UNIQUE (task_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='复核规则表';

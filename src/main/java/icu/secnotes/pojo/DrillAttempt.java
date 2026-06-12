@@ -28,5 +28,7 @@ public class DrillAttempt {
     private Integer maxScoreSnapshot;
     private Integer maxHintsSnapshot;
     private Integer timeLimitSnapshot;
+    private String screenshotHash;
+    private String requestLog;
     private LocalDateTime createTime;
 }

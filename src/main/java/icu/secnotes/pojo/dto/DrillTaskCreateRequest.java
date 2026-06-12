@@ -8,6 +8,11 @@ public class DrillTaskCreateRequest {
     private String title;
     private String description;
     private String difficulty;
+    private Integer maxHintCount;
+    private Integer timeLimitMinutes;
+    private Integer allowRetry;
+    private Integer evidenceReviewRequired;
+    private String prerequisiteKnowledge;
     private List<CheckpointDef> checkpoints;
 
     @Data

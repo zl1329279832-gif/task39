@@ -10,4 +10,6 @@ public class DrillSubmitRequest {
     private String evidence;
     private Integer elapsedSeconds;
     private Integer hintsUsed;
+    private String screenshotHash;
+    private String requestLog;
 }

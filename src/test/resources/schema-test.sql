@@ -73,6 +73,11 @@ CREATE TABLE IF NOT EXISTS drill_task (
     difficulty VARCHAR(20) DEFAULT 'medium',
     creator_id INT NOT NULL,
     status VARCHAR(20) DEFAULT 'active',
+    max_hint_count INT DEFAULT NULL,
+    time_limit_minutes INT DEFAULT NULL,
+    allow_retry TINYINT DEFAULT 1,
+    evidence_review_required TINYINT DEFAULT 0,
+    prerequisite_knowledge TEXT,
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -118,6 +123,8 @@ CREATE TABLE IF NOT EXISTS drill_attempt (
     max_score_snapshot INT NOT NULL DEFAULT 100,
     max_hints_snapshot INT NOT NULL DEFAULT 3,
     time_limit_snapshot INT DEFAULT 1800,
+    screenshot_hash VARCHAR(64),
+    request_log TEXT,
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -137,3 +144,54 @@ CREATE TABLE IF NOT EXISTS drill_score_summary (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_task_user ON drill_score_summary(task_id, user_id);
+
+-- Review ticket table
+CREATE TABLE IF NOT EXISTS drill_review_ticket (
+    id                INT AUTO_INCREMENT PRIMARY KEY,
+    attempt_id        INT NOT NULL,
+    task_id           INT NOT NULL,
+    checkpoint_id     INT NOT NULL,
+    user_id           INT NOT NULL,
+    reviewer_id       INT,
+    original_passed   TINYINT NOT NULL,
+    original_score    INT NOT NULL,
+    review_status     VARCHAR(20) NOT NULL DEFAULT 'pending',
+    overridden_passed TINYINT,
+    overridden_score  INT,
+    reason            TEXT,
+    review_comment    TEXT,
+    create_time       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    review_time       DATETIME
+);
+
+CREATE INDEX IF NOT EXISTS idx_review_ticket_attempt ON drill_review_ticket(attempt_id);
+CREATE INDEX IF NOT EXISTS idx_review_ticket_task ON drill_review_ticket(task_id);
+CREATE INDEX IF NOT EXISTS idx_review_ticket_status ON drill_review_ticket(review_status);
+
+-- Audit log table
+CREATE TABLE IF NOT EXISTS drill_audit_log (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    actor_id    INT NOT NULL,
+    action      VARCHAR(50) NOT NULL,
+    target_type VARCHAR(50) NOT NULL,
+    target_id   INT NOT NULL,
+    details     TEXT,
+    ip_address  VARCHAR(50),
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_target ON drill_audit_log(target_type, target_id);
+CREATE INDEX IF NOT EXISTS idx_audit_actor ON drill_audit_log(actor_id);
+
+-- Review rule table
+CREATE TABLE IF NOT EXISTS drill_review_rule (
+    id                     INT AUTO_INCREMENT PRIMARY KEY,
+    task_id                INT NOT NULL,
+    auto_approve_threshold INT DEFAULT 80,
+    manual_review_below    INT DEFAULT 50,
+    manual_review_triggers VARCHAR(500),
+    create_time            DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time            DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_review_rule_task ON drill_review_rule(task_id);

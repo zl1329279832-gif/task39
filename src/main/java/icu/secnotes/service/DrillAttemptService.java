@@ -11,4 +11,6 @@ public interface DrillAttemptService {
     List<DrillAttempt> getAttempts(Integer taskId, Integer userId);
 
     void resetAttempts(Integer taskId);
+
+    void recalculateScoreSummary(Integer taskId, Integer userId);
 }

@@ -12,18 +12,18 @@ public interface DrillAttemptMapper {
     @Insert("INSERT INTO drill_attempt(task_id, checkpoint_id, user_id, attempt_number, attempt_time, " +
             "payload_summary, evidence, elapsed_seconds, server_elapsed_seconds, hints_used, " +
             "deduction_items, score, passed, checkpoint_version, checkpoint_mode, " +
-            "max_score_snapshot, max_hints_snapshot, time_limit_snapshot) " +
+            "max_score_snapshot, max_hints_snapshot, time_limit_snapshot, screenshot_hash, request_log) " +
             "VALUES(#{taskId}, #{checkpointId}, #{userId}, #{attemptNumber}, #{attemptTime}, " +
             "#{payloadSummary}, #{evidence}, #{elapsedSeconds}, #{serverElapsedSeconds}, #{hintsUsed}, " +
             "#{deductionItems}, #{score}, #{passed}, #{checkpointVersion}, #{checkpointMode}, " +
-            "#{maxScoreSnapshot}, #{maxHintsSnapshot}, #{timeLimitSnapshot}) " +
+            "#{maxScoreSnapshot}, #{maxHintsSnapshot}, #{timeLimitSnapshot}, #{screenshotHash}, #{requestLog}) " +
             "ON DUPLICATE KEY UPDATE attempt_number=#{attemptNumber}, attempt_time=#{attemptTime}, " +
             "payload_summary=#{payloadSummary}, evidence=#{evidence}, " +
             "elapsed_seconds=#{elapsedSeconds}, server_elapsed_seconds=#{serverElapsedSeconds}, " +
             "hints_used=#{hintsUsed}, deduction_items=#{deductionItems}, score=#{score}, passed=#{passed}, " +
             "checkpoint_version=#{checkpointVersion}, checkpoint_mode=#{checkpointMode}, " +
             "max_score_snapshot=#{maxScoreSnapshot}, max_hints_snapshot=#{maxHintsSnapshot}, " +
-            "time_limit_snapshot=#{timeLimitSnapshot}")
+            "time_limit_snapshot=#{timeLimitSnapshot}, screenshot_hash=#{screenshotHash}, request_log=#{requestLog}")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int upsert(DrillAttempt attempt);
 
@@ -65,4 +65,10 @@ public interface DrillAttemptMapper {
             "GROUP BY a.user_id, ad.username, ad.name " +
             "ORDER BY total_score DESC")
     List<Map<String, Object>> getScoreStatsByTask(@Param("taskId") Integer taskId);
+
+    @Select("SELECT * FROM drill_attempt WHERE id = #{id}")
+    DrillAttempt findById(@Param("id") Integer id);
+
+    @Select("SELECT * FROM drill_attempt WHERE task_id = #{taskId} ORDER BY attempt_time DESC")
+    List<DrillAttempt> findByTaskId(@Param("taskId") Integer taskId);
 }

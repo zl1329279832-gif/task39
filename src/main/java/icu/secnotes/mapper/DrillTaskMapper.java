@@ -7,8 +7,10 @@ import java.util.List;
 @Mapper
 public interface DrillTaskMapper {
 
-    @Insert("INSERT INTO drill_task(title, description, difficulty, creator_id, status) " +
-            "VALUES(#{title}, #{description}, #{difficulty}, #{creatorId}, #{status})")
+    @Insert("INSERT INTO drill_task(title, description, difficulty, creator_id, status, " +
+            "max_hint_count, time_limit_minutes, allow_retry, evidence_review_required, prerequisite_knowledge) " +
+            "VALUES(#{title}, #{description}, #{difficulty}, #{creatorId}, #{status}, " +
+            "#{maxHintCount}, #{timeLimitMinutes}, #{allowRetry}, #{evidenceReviewRequired}, #{prerequisiteKnowledge})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(DrillTask task);
 
@@ -25,7 +27,10 @@ public interface DrillTaskMapper {
     List<DrillTask> findAll();
 
     @Update("UPDATE drill_task SET title=#{title}, description=#{description}, " +
-            "difficulty=#{difficulty}, status=#{status} WHERE id=#{id}")
+            "difficulty=#{difficulty}, status=#{status}, " +
+            "max_hint_count=#{maxHintCount}, time_limit_minutes=#{timeLimitMinutes}, " +
+            "allow_retry=#{allowRetry}, evidence_review_required=#{evidenceReviewRequired}, " +
+            "prerequisite_knowledge=#{prerequisiteKnowledge} WHERE id=#{id}")
     int update(DrillTask task);
 
     @Update("UPDATE drill_task SET status='archived' WHERE id=#{id}")

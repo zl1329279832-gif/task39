@@ -2,10 +2,16 @@ package icu.secnotes.service.impl;
 
 import icu.secnotes.mapper.DrillAttemptMapper;
 import icu.secnotes.mapper.DrillCheckpointMapper;
+import icu.secnotes.mapper.DrillReviewRuleMapper;
+import icu.secnotes.mapper.DrillReviewTicketMapper;
 import icu.secnotes.mapper.DrillScoreSummaryMapper;
+import icu.secnotes.mapper.DrillTaskMapper;
 import icu.secnotes.pojo.DrillAttempt;
 import icu.secnotes.pojo.DrillCheckpoint;
+import icu.secnotes.pojo.DrillReviewRule;
+import icu.secnotes.pojo.DrillReviewTicket;
 import icu.secnotes.pojo.DrillScoreSummary;
+import icu.secnotes.pojo.DrillTask;
 import icu.secnotes.pojo.dto.DrillSubmitRequest;
 import icu.secnotes.pojo.dto.VerificationResult;
 import icu.secnotes.service.CheckpointVerifier;
@@ -36,6 +42,15 @@ public class DrillAttemptServiceImpl implements DrillAttemptService {
 
     @Autowired
     private CheckpointVerifier verifier;
+
+    @Autowired
+    private DrillTaskMapper taskMapper;
+
+    @Autowired
+    private DrillReviewTicketMapper reviewTicketMapper;
+
+    @Autowired
+    private DrillReviewRuleMapper reviewRuleMapper;
 
     @Override
     @Transactional
@@ -82,6 +97,15 @@ public class DrillAttemptServiceImpl implements DrillAttemptService {
             }
         }
 
+        // 4b. 加载任务规则并执行约束
+        DrillTask task = taskMapper.findById(taskId);
+        if (task != null && task.getAllowRetry() != null && task.getAllowRetry() == 0) {
+            if (existing != null && existing.getPassed() != null && existing.getPassed() == 0
+                    && existing.getAttemptNumber() != null && existing.getAttemptNumber() >= 1) {
+                throw new IllegalStateException("此任务不允许重试");
+            }
+        }
+
         // 5. 验证（EXPLOIT / DEFENSE）
         VerificationResult result;
         if ("EXPLOIT".equalsIgnoreCase(checkpoint.getMode())) {
@@ -94,6 +118,16 @@ public class DrillAttemptServiceImpl implements DrillAttemptService {
         int baseScore = checkpoint.getMaxScore();
         int maxHints = checkpoint.getMaxHints();
         int timeLimit = checkpoint.getTimeLimit() != null ? checkpoint.getTimeLimit() : 1800;
+
+        // 6. 任务级规则收紧
+        if (task != null) {
+            if (task.getMaxHintCount() != null) {
+                maxHints = Math.min(maxHints, task.getMaxHintCount());
+            }
+            if (task.getTimeLimitMinutes() != null) {
+                timeLimit = Math.min(timeLimit, task.getTimeLimitMinutes() * 60);
+            }
+        }
 
         List<Map<String, Object>> deductions = new ArrayList<>();
         int totalDeduction = 0;
@@ -168,7 +202,27 @@ public class DrillAttemptServiceImpl implements DrillAttemptService {
         attempt.setMaxScoreSnapshot(baseScore);
         attempt.setMaxHintsSnapshot(maxHints);
         attempt.setTimeLimitSnapshot(timeLimit);
+        attempt.setScreenshotHash(request.getScreenshotHash());
+        attempt.setRequestLog(request.getRequestLog());
         attemptMapper.upsert(attempt);
+
+        // 9. 自动创建复核工单
+        if (task != null) {
+            boolean needReview = false;
+            if (task.getEvidenceReviewRequired() != null && task.getEvidenceReviewRequired() == 1) {
+                needReview = true;
+            }
+            DrillReviewRule rule = reviewRuleMapper.findByTaskId(taskId);
+            if (rule != null) {
+                if (result.isPassed() && finalScore < rule.getManualReviewBelow()) {
+                    needReview = true;
+                }
+                // score >= autoApproveThreshold → auto-approved, no ticket needed
+            }
+            if (needReview) {
+                autoCreateReviewTicketIfNeeded(attempt, taskId, checkpoint);
+            }
+        }
 
         // 8. 更新成绩统计
         updateScoreSummary(taskId, userId);
@@ -188,6 +242,11 @@ public class DrillAttemptServiceImpl implements DrillAttemptService {
     @Transactional
     public void resetAttempts(Integer taskId) {
         attemptMapper.deleteByTaskId(taskId);
+    }
+
+    @Override
+    public void recalculateScoreSummary(Integer taskId, Integer userId) {
+        updateScoreSummary(taskId, userId);
     }
 
     /**
@@ -214,6 +273,21 @@ public class DrillAttemptServiceImpl implements DrillAttemptService {
         summary.setCompletionPct(pct);
         summary.setLastAttemptTime(LocalDateTime.now());
         scoreSummaryMapper.upsert(summary);
+    }
+
+    private void autoCreateReviewTicketIfNeeded(DrillAttempt attempt, Integer taskId, DrillCheckpoint checkpoint) {
+        if (reviewTicketMapper.countPendingByAttemptId(attempt.getId()) == 0) {
+            DrillReviewTicket ticket = new DrillReviewTicket();
+            ticket.setAttemptId(attempt.getId());
+            ticket.setTaskId(taskId);
+            ticket.setCheckpointId(checkpoint.getId());
+            ticket.setUserId(attempt.getUserId());
+            ticket.setOriginalPassed(attempt.getPassed());
+            ticket.setOriginalScore(attempt.getScore());
+            ticket.setReviewStatus("pending");
+            reviewTicketMapper.insert(ticket);
+            log.info("自动创建复核单: attemptId={}, taskId={}, userId={}", attempt.getId(), taskId, attempt.getUserId());
+        }
     }
 
     /**

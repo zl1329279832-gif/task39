@@ -52,6 +52,11 @@ public class DrillTaskServiceImpl implements DrillTaskService {
         task.setDifficulty(request.getDifficulty() != null ? request.getDifficulty() : "medium");
         task.setCreatorId(creatorId);
         task.setStatus("active");
+        task.setMaxHintCount(request.getMaxHintCount());
+        task.setTimeLimitMinutes(request.getTimeLimitMinutes());
+        task.setAllowRetry(request.getAllowRetry() != null ? request.getAllowRetry() : 1);
+        task.setEvidenceReviewRequired(request.getEvidenceReviewRequired() != null ? request.getEvidenceReviewRequired() : 0);
+        task.setPrerequisiteKnowledge(request.getPrerequisiteKnowledge());
         taskMapper.insert(task);
 
         if (request.getCheckpoints() != null && !request.getCheckpoints().isEmpty()) {
