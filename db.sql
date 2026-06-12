@@ -222,3 +222,104 @@ CREATE TABLE IF NOT EXISTS drill_score_summary (
     CONSTRAINT fk_score_user FOREIGN KEY (user_id) REFERENCES Admin(id),
     CONSTRAINT uk_task_user UNIQUE (task_id, user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='演练成绩统计表';
+
+-- =============================================
+-- 分层演练任务与证据复核系统 (Enhanced Drill System)
+-- =============================================
+
+-- 演练任务实例表（学员开始任务时创建，快照任务规则）
+CREATE TABLE IF NOT EXISTS drill_task_instance (
+    id            INT AUTO_INCREMENT PRIMARY KEY,
+    task_id       INT NOT NULL COMMENT '关联的任务定义',
+    user_id       INT NOT NULL COMMENT '学员ID (Admin.id)',
+    status        VARCHAR(20) NOT NULL DEFAULT 'IN_PROGRESS' COMMENT 'IN_PROGRESS, COMPLETED, EXPIRED',
+    rules_snapshot TEXT COMMENT '任务规则快照JSON（检查点配置冻结）',
+    start_time    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deadline      DATETIME COMMENT '截止时间',
+    total_score   INT DEFAULT 0,
+    create_time   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time   DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_instance_task FOREIGN KEY (task_id) REFERENCES drill_task(id),
+    CONSTRAINT fk_instance_user FOREIGN KEY (user_id) REFERENCES Admin(id),
+    CONSTRAINT uk_instance_task_user UNIQUE (task_id, user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='演练任务实例表';
+
+-- 证据记录表（学员提交的每条证据）
+CREATE TABLE IF NOT EXISTS evidence_record (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    instance_id     INT NOT NULL COMMENT '任务实例ID',
+    task_id         INT NOT NULL,
+    checkpoint_id   INT NOT NULL,
+    user_id         INT NOT NULL,
+    evidence_type   VARCHAR(30) NOT NULL COMMENT 'PAYLOAD, SCREENSHOT_HASH, REQUEST_LOG',
+    content         TEXT NOT NULL COMMENT '证据内容',
+    mode            VARCHAR(20) NOT NULL COMMENT 'EXPLOIT 或 DEFENSE',
+    auto_judgment   VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT 'HIT, MISS, PENDING',
+    admin_judgment  VARCHAR(20) DEFAULT NULL COMMENT '管理员复核判定: HIT, MISS',
+    review_id       INT DEFAULT NULL COMMENT '关联复核单ID',
+    submission_hash VARCHAR(64) NOT NULL COMMENT 'SHA-256 防重复提交',
+    elapsed_seconds INT DEFAULT 0,
+    hints_used      INT DEFAULT 0,
+    create_time     DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_evidence_instance FOREIGN KEY (instance_id) REFERENCES drill_task_instance(id),
+    CONSTRAINT fk_evidence_task FOREIGN KEY (task_id) REFERENCES drill_task(id),
+    CONSTRAINT fk_evidence_checkpoint FOREIGN KEY (checkpoint_id) REFERENCES drill_checkpoint(id),
+    CONSTRAINT fk_evidence_user FOREIGN KEY (user_id) REFERENCES Admin(id),
+    CONSTRAINT uk_evidence_hash UNIQUE (instance_id, checkpoint_id, submission_hash)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='证据记录表';
+
+-- 评分明细表（每个检查点的评分分解）
+CREATE TABLE IF NOT EXISTS score_detail (
+    id                INT AUTO_INCREMENT PRIMARY KEY,
+    instance_id       INT NOT NULL,
+    task_id           INT NOT NULL,
+    checkpoint_id     INT NOT NULL,
+    user_id           INT NOT NULL,
+    base_score        INT NOT NULL DEFAULT 0,
+    hint_deduction    INT NOT NULL DEFAULT 0,
+    time_deduction    INT NOT NULL DEFAULT 0,
+    retry_deduction   INT NOT NULL DEFAULT 0,
+    review_adjustment INT NOT NULL DEFAULT 0 COMMENT '复核调分',
+    final_score       INT NOT NULL DEFAULT 0,
+    passed            TINYINT NOT NULL DEFAULT 0,
+    snapshot_json     TEXT COMMENT '检查点配置快照',
+    create_time       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time       DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_sd_instance FOREIGN KEY (instance_id) REFERENCES drill_task_instance(id),
+    CONSTRAINT fk_sd_task FOREIGN KEY (task_id) REFERENCES drill_task(id),
+    CONSTRAINT fk_sd_checkpoint FOREIGN KEY (checkpoint_id) REFERENCES drill_checkpoint(id),
+    CONSTRAINT fk_sd_user FOREIGN KEY (user_id) REFERENCES Admin(id),
+    CONSTRAINT uk_sd_instance_checkpoint UNIQUE (instance_id, checkpoint_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='评分明细表';
+
+-- 复核单表（管理员对证据的复核记录）
+CREATE TABLE IF NOT EXISTS review_record (
+    id                INT AUTO_INCREMENT PRIMARY KEY,
+    evidence_id       INT NOT NULL COMMENT '被复核的证据ID',
+    instance_id       INT NOT NULL,
+    task_id           INT NOT NULL,
+    checkpoint_id     INT NOT NULL,
+    reviewer_id       INT NOT NULL COMMENT '复核管理员ID',
+    original_judgment VARCHAR(20) NOT NULL COMMENT '原始判定',
+    new_judgment      VARCHAR(20) NOT NULL COMMENT '新判定',
+    reason            TEXT COMMENT '复核理由',
+    score_adjustment  INT DEFAULT 0 COMMENT '分数调整量',
+    create_time       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_review_evidence FOREIGN KEY (evidence_id) REFERENCES evidence_record(id),
+    CONSTRAINT fk_review_instance FOREIGN KEY (instance_id) REFERENCES drill_task_instance(id),
+    CONSTRAINT fk_review_reviewer FOREIGN KEY (reviewer_id) REFERENCES Admin(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='复核单表';
+
+-- 审计日志表
+CREATE TABLE IF NOT EXISTS audit_log (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    action      VARCHAR(50) NOT NULL COMMENT '操作类型',
+    actor_id    INT NOT NULL COMMENT '操作人ID',
+    actor_role  VARCHAR(20) NOT NULL,
+    target_type VARCHAR(30) NOT NULL COMMENT 'TASK, INSTANCE, EVIDENCE, REVIEW, CHECKPOINT',
+    target_id   INT NOT NULL,
+    detail      TEXT COMMENT '操作详情JSON',
+    ip_address  VARCHAR(50),
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_audit_actor FOREIGN KEY (actor_id) REFERENCES Admin(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='审计日志表';

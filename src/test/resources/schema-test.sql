@@ -137,3 +137,82 @@ CREATE TABLE IF NOT EXISTS drill_score_summary (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_task_user ON drill_score_summary(task_id, user_id);
+
+-- Enhanced Drill System Tables
+CREATE TABLE IF NOT EXISTS drill_task_instance (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    task_id INT NOT NULL,
+    user_id INT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'IN_PROGRESS',
+    rules_snapshot TEXT,
+    start_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deadline DATETIME,
+    total_score INT DEFAULT 0,
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_instance_task_user ON drill_task_instance(task_id, user_id);
+
+CREATE TABLE IF NOT EXISTS evidence_record (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    instance_id INT NOT NULL,
+    task_id INT NOT NULL,
+    checkpoint_id INT NOT NULL,
+    user_id INT NOT NULL,
+    evidence_type VARCHAR(30) NOT NULL,
+    content TEXT NOT NULL,
+    mode VARCHAR(20) NOT NULL,
+    auto_judgment VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    admin_judgment VARCHAR(20) DEFAULT NULL,
+    review_id INT DEFAULT NULL,
+    submission_hash VARCHAR(64) NOT NULL,
+    elapsed_seconds INT DEFAULT 0,
+    hints_used INT DEFAULT 0,
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_evidence_hash ON evidence_record(instance_id, checkpoint_id, submission_hash);
+
+CREATE TABLE IF NOT EXISTS score_detail (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    instance_id INT NOT NULL,
+    task_id INT NOT NULL,
+    checkpoint_id INT NOT NULL,
+    user_id INT NOT NULL,
+    base_score INT NOT NULL DEFAULT 0,
+    hint_deduction INT NOT NULL DEFAULT 0,
+    time_deduction INT NOT NULL DEFAULT 0,
+    retry_deduction INT NOT NULL DEFAULT 0,
+    review_adjustment INT NOT NULL DEFAULT 0,
+    final_score INT NOT NULL DEFAULT 0,
+    passed TINYINT NOT NULL DEFAULT 0,
+    snapshot_json TEXT,
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_sd_instance_checkpoint ON score_detail(instance_id, checkpoint_id);
+
+CREATE TABLE IF NOT EXISTS review_record (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    evidence_id INT NOT NULL,
+    instance_id INT NOT NULL,
+    task_id INT NOT NULL,
+    checkpoint_id INT NOT NULL,
+    reviewer_id INT NOT NULL,
+    original_judgment VARCHAR(20) NOT NULL,
+    new_judgment VARCHAR(20) NOT NULL,
+    reason TEXT,
+    score_adjustment INT DEFAULT 0,
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    action VARCHAR(50) NOT NULL,
+    actor_id INT NOT NULL,
+    actor_role VARCHAR(20) NOT NULL,
+    target_type VARCHAR(30) NOT NULL,
+    target_id INT NOT NULL,
+    detail TEXT,
+    ip_address VARCHAR(50),
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP
+);
